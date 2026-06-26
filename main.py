@@ -104,46 +104,20 @@ def html_to_pptx_bytes(html_string):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        content_type = self.headers.get('Content-Type', '')
-        content_length = int(self.headers['Content-Length'])
-        body = self.rfile.read(content_length)
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8').strip()
     
-        html_string = ''
+        # Try base64 decode first, fall back to raw
+        import base64
+        try:
+            html_string = base64.b64decode(body).decode('utf-8')
+            print("Decoded as base64")
+        except Exception:
+            html_string = body
+            print("Used as raw HTML")
     
-        if 'multipart/form-data' in content_type:
-            # Extract boundary
-            boundary = None
-            for part in content_type.split(';'):
-                part = part.strip()
-                if part.startswith('boundary='):
-                    boundary = part[9:].strip()
-                    break
-    
-            if boundary:
-                boundary_bytes = ('--' + boundary).encode()
-                parts = body.split(boundary_bytes)
-                for part in parts:
-                    if b'Content-Disposition' in part:
-                        # Split headers from body
-                        if b'\r\n\r\n' in part:
-                            headers_raw, content = part.split(b'\r\n\r\n', 1)
-                            # Strip trailing boundary markers
-                            content = content.rstrip(b'\r\n--')
-                            html_string = content.decode('utf-8')
-                            break  # Take first file field found
-    
-        elif 'application/json' in content_type:
-            import json, base64
-            data = json.loads(body.decode('utf-8'))
-            raw = data.get('html', '')
-            try:
-                html_string = base64.b64decode(raw).decode('utf-8')
-            except Exception:
-                html_string = raw
-    
-        else:
-            # Raw body fallback
-            html_string = body.decode('utf-8')
+        print(f"HTML length: {len(html_string)}")
+        print(f"First 100 chars: {html_string[:100]}")
     
         pptx_bytes = html_to_pptx_bytes(html_string)
     
@@ -154,7 +128,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(pptx_bytes)
-
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')

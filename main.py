@@ -1,16 +1,14 @@
-#!/usr/bin/env python3
-
 import http.server
 import io
 import os
-import re
+import cgi
+import base64
 import json
-import urllib.parse
 from bs4 import BeautifulSoup
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import MSO_VERTICAL_ANCHOR, MSO_AUTO_SIZE, PP_PARAGRAPH_ALIGNMENT
+from pptx.enum.text import MSO_AUTO_SIZE
 
 SLIDE_WIDTH_INCHES = 13.33
 SLIDE_HEIGHT_INCHES = 7.5
@@ -28,14 +26,11 @@ def html_to_pptx_bytes(html_string):
 
     for el in slide_els:
         slide = prs.slides.add_slide(blank_layout)
-
-        # Background color
         background = slide.background
         fill = background.fill
         fill.solid()
         fill.fore_color.rgb = RGBColor(0x1E, 0x1E, 0x2E)
 
-        # Title
         title_el = el.find(['h1', 'h2'])
         y_offset = MARGIN
         if title_el:
@@ -52,7 +47,6 @@ def html_to_pptx_bytes(html_string):
             p.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
             y_offset += 1.4
 
-        # Subtitle / h3
         sub_el = el.find('h3') or el.find(class_='subtitle')
         if sub_el:
             txBox = slide.shapes.add_textbox(
@@ -67,7 +61,6 @@ def html_to_pptx_bytes(html_string):
             p.font.color.rgb = RGBColor(0x89, 0xB4, 0xFA)
             y_offset += 0.8
 
-        # Bullet points
         list_items = el.find_all('li')
         if list_items:
             txBox = slide.shapes.add_textbox(
@@ -83,8 +76,7 @@ def html_to_pptx_bytes(html_string):
                 p.text = '• ' + li.get_text().strip()
                 p.font.size = Pt(18)
                 p.font.color.rgb = RGBColor(0xCD, 0xD6, 0xF4)
-        elif not list_items:
-            # Paragraph text fallback
+        else:
             paragraphs = el.find_all('p')
             if paragraphs:
                 body = '\n'.join(p.get_text().strip() for p in paragraphs)
@@ -113,16 +105,42 @@ def html_to_pptx_bytes(html_string):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        content_type = self.headers.get('Content-Type', '')
         content_length = int(self.headers['Content-Length'])
-        body = self.rfile.read(content_length).decode('utf-8')
+        body = self.rfile.read(content_length)
 
-        # Accept JSON: { "html": "<raw html string>" }
-        try:
-            data = json.loads(body)
-            html_string = data.get('html', '')
-        except json.JSONDecodeError:
-            # Fallback: treat body as raw HTML
-            html_string = body
+        html_string = ''
+
+        if 'multipart/form-data' in content_type:
+            # Handle form-data (same as Gotenberg style)
+            environ = {
+                'REQUEST_METHOD': 'POST',
+                'CONTENT_TYPE': content_type,
+                'CONTENT_LENGTH': str(content_length),
+            }
+            form = cgi.FieldStorage(
+                fp=io.BytesIO(body),
+                environ=environ,
+                keep_blank_values=True
+            )
+            # Try common field names
+            for field_name in ['files', 'html', 'index_file', 'file']:
+                if field_name in form:
+                    html_string = form[field_name].file.read().decode('utf-8')
+                    break
+
+        elif 'application/json' in content_type:
+            # Handle JSON fallback
+            data = json.loads(body.decode('utf-8'))
+            raw = data.get('html', '')
+            try:
+                html_string = base64.b64decode(raw).decode('utf-8')
+            except Exception:
+                html_string = raw
+
+        else:
+            # Raw body fallback
+            html_string = body.decode('utf-8')
 
         pptx_bytes = html_to_pptx_bytes(html_string)
 
@@ -135,7 +153,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(pptx_bytes)
 
     def do_OPTIONS(self):
-        # Handle CORS preflight
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -143,7 +160,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        pass  # Silence request logs
+        pass
 
 
 httpd = http.server.HTTPServer(('', server_port), Handler)

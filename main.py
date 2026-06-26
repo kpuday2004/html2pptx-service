@@ -116,7 +116,6 @@ def add_bar_chart(slide, chart_title, categories, series_name, values, y=1.7):
     chart.value_axis.tick_labels.font.color.rgb = SUBTEXT
     chart.category_axis.format.line.color.rgb = SUBTEXT
     chart.value_axis.format.line.color.rgb = SUBTEXT
-    chart.plot_area.format.fill.background()
 
 def add_pie_chart(slide, chart_title, categories, values, y=1.7):
     chart_data = ChartData()

@@ -1,7 +1,6 @@
 import http.server
 import io
 import os
-import cgi
 import base64
 import json
 from bs4 import BeautifulSoup
@@ -108,42 +107,46 @@ class Handler(http.server.BaseHTTPRequestHandler):
         content_type = self.headers.get('Content-Type', '')
         content_length = int(self.headers['Content-Length'])
         body = self.rfile.read(content_length)
-
+    
         html_string = ''
-
+    
         if 'multipart/form-data' in content_type:
-            # Handle form-data (same as Gotenberg style)
-            environ = {
-                'REQUEST_METHOD': 'POST',
-                'CONTENT_TYPE': content_type,
-                'CONTENT_LENGTH': str(content_length),
-            }
-            form = cgi.FieldStorage(
-                fp=io.BytesIO(body),
-                environ=environ,
-                keep_blank_values=True
-            )
-            # Try common field names
-            for field_name in ['files', 'html', 'index_file', 'file']:
-                if field_name in form:
-                    html_string = form[field_name].file.read().decode('utf-8')
+            # Extract boundary
+            boundary = None
+            for part in content_type.split(';'):
+                part = part.strip()
+                if part.startswith('boundary='):
+                    boundary = part[9:].strip()
                     break
-
+    
+            if boundary:
+                boundary_bytes = ('--' + boundary).encode()
+                parts = body.split(boundary_bytes)
+                for part in parts:
+                    if b'Content-Disposition' in part:
+                        # Split headers from body
+                        if b'\r\n\r\n' in part:
+                            headers_raw, content = part.split(b'\r\n\r\n', 1)
+                            # Strip trailing boundary markers
+                            content = content.rstrip(b'\r\n--')
+                            html_string = content.decode('utf-8')
+                            break  # Take first file field found
+    
         elif 'application/json' in content_type:
-            # Handle JSON fallback
+            import json, base64
             data = json.loads(body.decode('utf-8'))
             raw = data.get('html', '')
             try:
                 html_string = base64.b64decode(raw).decode('utf-8')
             except Exception:
                 html_string = raw
-
+    
         else:
             # Raw body fallback
             html_string = body.decode('utf-8')
-
+    
         pptx_bytes = html_to_pptx_bytes(html_string)
-
+    
         self.send_response(200)
         self.send_header('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
         self.send_header('Content-Disposition', 'attachment; filename="presentation.pptx"')

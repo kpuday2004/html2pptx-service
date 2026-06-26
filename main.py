@@ -117,8 +117,6 @@ def add_bar_chart(slide, chart_title, categories, series_name, values, y=1.7):
     chart.category_axis.format.line.color.rgb = SUBTEXT
     chart.value_axis.format.line.color.rgb = SUBTEXT
     chart.plot_area.format.fill.background()
-    chart.chart_area.format.fill.solid()
-    chart.chart_area.format.fill.fore_color.rgb = RGBColor(0x1E, 0x29, 0x3B)
 
 def add_pie_chart(slide, chart_title, categories, values, y=1.7):
     chart_data = ChartData()
@@ -148,9 +146,6 @@ def add_pie_chart(slide, chart_title, categories, values, y=1.7):
     for i, point in enumerate(plot.series[0].points):
         point.format.fill.solid()
         point.format.fill.fore_color.rgb = colors[i % len(colors)]
-
-    chart.chart_area.format.fill.solid()
-    chart.chart_area.format.fill.fore_color.rgb = RGBColor(0x1E, 0x29, 0x3B)
 
 def add_two_column(slide, left_heading, left_items, right_heading, right_items):
     col_w = (SLIDE_W - 2*MARGIN - 0.3) / 2

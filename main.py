@@ -134,6 +134,36 @@ def build_chart(slide, chart_type_enum, chart_title, categories, series_name, va
     except Exception:
         pass
 
+    # Add legend
+    from pptx.oxml.ns import qn
+    from lxml import etree
+    chart_xml = chart._element
+    plot_area = chart_xml.find(qn('c:plotArea'))
+    if plot_area is not None:
+        legend_xml = etree.fromstring('''
+            <c:legend xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+                <c:legendPos val="b"/>
+                <c:overlay val="0"/>
+                <c:spPr>
+                    <a:noFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"/>
+                </c:spPr>
+                <c:txPr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <a:bodyPr/>
+                    <a:lstStyle/>
+                    <a:p>
+                        <a:pPr>
+                            <a:defRPr sz="1000" b="0">
+                                <a:solidFill>
+                                    <a:srgbClr val="64748B"/>
+                                </a:solidFill>
+                            </a:defRPr>
+                        </a:pPr>
+                    </a:p>
+                </c:txPr>
+            </c:legend>
+        ''')
+        chart_xml.insert(list(chart_xml).index(plot_area) + 1, legend_xml)
+
     return chart
 
 # ── SLIDE BUILDERS ──────────────────────────────────────────────────────────
@@ -339,6 +369,111 @@ def build_mixed_slide(prs, el):
         build_chart(slide, chart_type_enum,
                     chart_title, cats, series_name, vals,
                     chart_x, content_y, chart_w, content_h)
+        
+def build_table_slide(prs, el):
+    """LAYOUT 7 — Table slide."""
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    set_bg(slide)
+    add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
+
+    title_el = el.find('h1')
+    title_text = title_el.get_text().strip() if title_el else 'Data Table'
+    add_title(slide, title_text)
+    add_accent_bar(slide)
+
+    table_el = el.find('table')
+    if not table_el:
+        return
+
+    # Parse headers
+    headers = []
+    thead = table_el.find('thead')
+    if thead:
+        headers = [th.get_text().strip() for th in thead.find_all(['th', 'td'])]
+    elif table_el.find('tr'):
+        first_row = table_el.find('tr')
+        headers = [th.get_text().strip() for th in first_row.find_all(['th', 'td'])]
+
+    # Parse rows
+    rows = []
+    tbody = table_el.find('tbody')
+    row_source = tbody if tbody else table_el
+    for tr in row_source.find_all('tr'):
+        cells = [td.get_text().strip() for td in tr.find_all(['td', 'th'])]
+        if cells and cells != headers:
+            rows.append(cells)
+
+    if not headers or not rows:
+        return
+
+    col_count = len(headers)
+    row_count = len(rows) + 1  # +1 for header
+
+    # Limit to 12 rows to fit slide
+    rows = rows[:11]
+    row_count = len(rows) + 1
+
+    table_w = SLIDE_W - 2 * MARGIN
+    table_h = min(SLIDE_H - 1.8 - MARGIN, row_count * 0.45)
+
+    tbl = slide.shapes.add_table(
+        row_count, col_count,
+        Inches(MARGIN), Inches(1.7),
+        Inches(table_w), Inches(table_h)
+    ).table
+
+    col_w = Inches(table_w / col_count)
+    for col in tbl.columns:
+        col.width = col_w
+
+    # Style header row
+    for j, header in enumerate(headers):
+        cell = tbl.cell(0, j)
+        cell.text = header
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = ACCENT
+        para = cell.text_frame.paragraphs[0]
+        para.font.bold = True
+        para.font.size = Pt(13)
+        para.font.color.rgb = WHITE
+        from pptx.enum.text import PP_ALIGN
+        para.alignment = PP_ALIGN.CENTER
+
+    # Style data rows
+    for i, row in enumerate(rows):
+        for j, cell_text in enumerate(row):
+            cell = tbl.cell(i + 1, j)
+            cell.text = str(cell_text)
+            # Alternate row colors
+            if i % 2 == 0:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = WHITE
+            else:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = BG2
+            para = cell.text_frame.paragraphs[0]
+            para.font.size = Pt(12)
+            para.font.color.rgb = BODYTEXT
+            from pptx.enum.text import PP_ALIGN
+            para.alignment = PP_ALIGN.CENTER
+
+    # Style borders via XML
+    from pptx.oxml.ns import qn
+    from lxml import etree
+    border_xml = '<a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="12700"><a:solidFill><a:srgbClr val="E2E8F0"/></a:solidFill></a:ln>'
+    for row in tbl.rows:
+        for cell in row.cells:
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            for border_tag in ['a:lnL', 'a:lnR', 'a:lnT', 'a:lnB']:
+                existing = tcPr.find(qn(border_tag))
+                if existing is not None:
+                    tcPr.remove(existing)
+                border_el = etree.fromstring(border_xml.replace('<a:ln', f'<{border_tag}').replace('</a:ln>', f'</{border_tag}>'))
+                tcPr.append(border_el)
 
 # ── MAIN CONVERTER ──────────────────────────────────────────────────────────
 
@@ -364,6 +499,8 @@ def html_to_pptx_bytes(html_string):
 
         if is_title:
             build_title_slide(prs, el)
+        elif layout == 'table' or el.find('table'):
+            build_table_slide(prs, el)
         elif chart_type == 'bar' and layout != 'mixed':
             build_bar_chart_slide(prs, el)
         elif chart_type == 'pie' and layout != 'mixed':

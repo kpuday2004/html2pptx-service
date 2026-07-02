@@ -17,17 +17,17 @@ SLIDE_H = 7.5
 MARGIN = 0.5
 server_port = int(os.getenv('HTML2PPTX_PORT', '8080'))
 
-# ── Color palette ──────────────────────────────────────────────────────────
-BG       = RGBColor(0x0F, 0x17, 0x2A)   # dark navy
-BG2      = RGBColor(0x1E, 0x29, 0x3B)   # slightly lighter navy for cards
+# ── Color palette (Light Theme) ────────────────────────────────────────────
+BG       = RGBColor(0xF8, 0xFA, 0xFC)   # near white background
+BG2      = RGBColor(0xF1, 0xF5, 0xF9)   # light gray card background
 WHITE    = RGBColor(0xFF, 0xFF, 0xFF)
-ACCENT   = RGBColor(0x3B, 0x82, 0xF6)   # blue
-ACCENT2  = RGBColor(0x10, 0xB9, 0x81)   # green
-ACCENT3  = RGBColor(0xF5, 0x9E, 0x0B)   # amber
-ACCENT4  = RGBColor(0xEC, 0x48, 0x99)   # pink
-ACCENT5  = RGBColor(0x8B, 0x5C, 0xF6)   # purple
-SUBTEXT  = RGBColor(0x94, 0xA3, 0xB8)   # slate
-BODYTEXT = RGBColor(0xCD, 0xD6, 0xF4)   # light blue-white
+ACCENT   = RGBColor(0x25, 0x63, 0xEB)   # strong blue
+ACCENT2  = RGBColor(0x05, 0x96, 0x69)   # emerald green
+ACCENT3  = RGBColor(0xD9, 0x77, 0x06)   # amber
+ACCENT4  = RGBColor(0xDB, 0x27, 0x77)   # pink
+ACCENT5  = RGBColor(0x70, 0x3B, 0xE5)   # purple
+SUBTEXT  = RGBColor(0x64, 0x74, 0x8B)   # slate gray
+BODYTEXT = RGBColor(0x1E, 0x29, 0x3B)   # dark navy text
 
 CHART_COLORS = [ACCENT, ACCENT2, ACCENT3, ACCENT4, ACCENT5]
 
@@ -167,7 +167,7 @@ def build_title_slide(prs, el):
     p.text = title_text
     p.font.size = Pt(48)
     p.font.bold = True
-    p.font.color.rgb = WHITE
+    p.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)   # dark navy instead of WHITE
 
     # Subtitle / tagline (from <p> tag)
     sub_el = el.find('p')

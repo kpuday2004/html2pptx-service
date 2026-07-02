@@ -72,7 +72,7 @@ def add_accent_bar(slide, x=None, y=1.45, w=None, h=0.04):
     bar.fill.fore_color.rgb = ACCENT
     bar.line.fill.background()
 
-def add_title(slide, text, y=0.4, size=36, color=WHITE):
+def add_title(slide, text, y=0.4, size=36, color=BODYTEXT):
     add_textbox(slide, text, MARGIN, y, SLIDE_W - 2*MARGIN, 1.0,
                 size=size, bold=True, color=color)
 
@@ -111,12 +111,12 @@ def build_chart(slide, chart_type_enum, chart_title, categories, series_name, va
 
     chart.has_title = True
     chart.chart_title.text_frame.text = chart_title
-    chart.chart_title.text_frame.paragraphs[0].font.color.rgb = WHITE
+    chart.chart_title.text_frame.paragraphs[0].font.color.rgb = BODYTEXT
     chart.chart_title.text_frame.paragraphs[0].font.size = Pt(13)
 
     plot = chart.plots[0]
     plot.has_data_labels = True
-    plot.data_labels.font.color.rgb = WHITE
+    plot.data_labels.font.color.rgb = BODYTEXT
     plot.data_labels.font.size = Pt(10)
 
     if chart_type_enum == XL_CHART_TYPE.PIE:
@@ -147,7 +147,7 @@ def build_title_slide(prs, el):
     add_shape(slide, 0, 0, SLIDE_W, 0.08, ACCENT)
 
     # Large bottom gradient-like bar
-    add_shape(slide, 0, SLIDE_H - 1.2, SLIDE_W, 1.2, BG2)
+    add_shape(slide, 0, SLIDE_H - 1.2, SLIDE_W, 1.2, RGBColor(0xE2, 0xE8, 0xF0))
     add_shape(slide, 0, SLIDE_H - 1.22, SLIDE_W, 0.05, ACCENT)
 
     # Decorative side accent
@@ -180,7 +180,7 @@ def build_title_slide(prs, el):
     # Bottom label
     add_textbox(slide, 'Powered by Infinium Intelligence',
                 0.5, SLIDE_H - 1.0, SLIDE_W - 1.0, 0.5,
-                size=11, color=SUBTEXT,
+                size=11, color=BODYTEXT,
                 align=__import__('pptx.enum.text', fromlist=['PP_ALIGN']).PP_ALIGN.RIGHT)
 
 def build_bullets_slide(prs, el):

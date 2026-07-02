@@ -134,7 +134,6 @@ def build_chart(slide, chart_type_enum, chart_title, categories, series_name, va
     except Exception:
         pass
 
-    chart.plot_area.format.fill.background()
     return chart
 
 # ── SLIDE BUILDERS ──────────────────────────────────────────────────────────

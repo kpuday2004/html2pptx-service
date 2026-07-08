@@ -281,6 +281,7 @@ To expose it publicly, put it behind an Nginx reverse proxy with SSL.
 ## Testing the Service
 
 ### Quick health check (expect a 501 — GET is not supported, which confirms the server is up)
+There is an attached test.html file in the repo for performing tests.
 
 ```bash
 curl http://localhost:8080

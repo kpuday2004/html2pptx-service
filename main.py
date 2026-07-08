@@ -144,6 +144,11 @@ def add_chart_table(slide, categories, values, series_name, x, y, w, h):
     for col in tbl.columns:
         col.width = col_w
 
+    max_row_h = Inches(h / row_count)
+    capped_row_h = min(max_row_h, Inches(0.38))
+    for row in tbl.rows:
+        row.height = capped_row_h
+    
     # Header row
     headers = [series_name or 'Category', 'Value']
     for j, header in enumerate(headers):
@@ -337,8 +342,8 @@ def build_bar_chart_slide(prs, el):
                     MARGIN, content_y, SLIDE_W - 2 * MARGIN, chart_h)
 
         add_chart_table(slide, cats, vals, series_name,
-                        MARGIN + 2.0, table_y,
-                        SLIDE_W - 2 * MARGIN - 4.0, table_h)
+                        MARGIN + 1.0, table_y,
+                        SLIDE_W - 2 * MARGIN - 2.0, table_h)
     else:
         # Chart left (~65%), table right (~35%)
         chart_w = (SLIDE_W - 2 * MARGIN) * 0.65

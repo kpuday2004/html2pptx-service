@@ -11,6 +11,8 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_AUTO_SIZE
 from pptx.chart.data import ChartData
 from pptx.enum.chart import XL_CHART_TYPE
+from pptx.oxml.ns import qn
+from lxml import etree
 
 SLIDE_W = 13.33
 SLIDE_H = 7.5
@@ -31,13 +33,14 @@ BODYTEXT = RGBColor(0x1E, 0x29, 0x3B)   # dark navy text
 
 CHART_COLORS = [ACCENT, ACCENT2, ACCENT3, ACCENT4, ACCENT5]
 
-def hex_to_rgb(color: RGBColor):
-    return (color[0], color[1], color[2])
+
+# ── SHARED HELPERS ──────────────────────────────────────────────────────────
 
 def set_bg(slide, color=None):
     fill = slide.background.fill
     fill.solid()
     fill.fore_color.rgb = color or BG
+
 
 def add_shape(slide, x, y, w, h, color):
     shape = slide.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
@@ -45,6 +48,7 @@ def add_shape(slide, x, y, w, h, color):
     shape.fill.fore_color.rgb = color
     shape.line.fill.background()
     return shape
+
 
 def add_textbox(slide, text, x, y, w, h, size=16, bold=False, color=WHITE,
                 italic=False, align=None, wrap=True, auto_size=True):
@@ -64,6 +68,7 @@ def add_textbox(slide, text, x, y, w, h, size=16, bold=False, color=WHITE,
         p.alignment = align
     return tb
 
+
 def add_accent_bar(slide, x=None, y=1.45, w=None, h=0.04):
     x = x if x is not None else MARGIN
     w = w if w is not None else (SLIDE_W - 2 * MARGIN)
@@ -72,13 +77,15 @@ def add_accent_bar(slide, x=None, y=1.45, w=None, h=0.04):
     bar.fill.fore_color.rgb = ACCENT
     bar.line.fill.background()
 
+
 def add_title(slide, text, y=0.4, size=36, color=BODYTEXT):
-    add_textbox(slide, text, MARGIN, y, SLIDE_W - 2*MARGIN, 1.0,
+    add_textbox(slide, text, MARGIN, y, SLIDE_W - 2 * MARGIN, 1.0,
                 size=size, bold=True, color=color)
+
 
 def add_bullets(slide, items, x=None, y=1.6, w=None, size=16):
     x = x if x is not None else MARGIN
-    w = w if w is not None else (SLIDE_W - 2*MARGIN)
+    w = w if w is not None else (SLIDE_W - 2 * MARGIN)
     tb = slide.shapes.add_textbox(
         Inches(x), Inches(y), Inches(w),
         Inches(SLIDE_H - y - MARGIN)
@@ -93,12 +100,92 @@ def add_bullets(slide, items, x=None, y=1.6, w=None, size=16):
         p.font.color.rgb = BODYTEXT
         p.space_before = Pt(6)
 
+
 def add_paragraph_text(slide, text, x=None, y=1.6, w=None, h=0.8):
     x = x if x is not None else MARGIN
-    w = w if w is not None else (SLIDE_W - 2*MARGIN)
+    w = w if w is not None else (SLIDE_W - 2 * MARGIN)
     add_textbox(slide, text, x, y, w, h, size=15, color=SUBTEXT, italic=True)
 
+
+def apply_table_borders(tbl):
+    """Apply light borders to all cells in a table."""
+    for row in tbl.rows:
+        for cell in row.cells:
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            for border_tag in ['a:lnL', 'a:lnR', 'a:lnT', 'a:lnB']:
+                existing = tcPr.find(qn(border_tag))
+                if existing is not None:
+                    tcPr.remove(existing)
+                border_el = etree.fromstring(
+                    f'<{border_tag} xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="6350">'
+                    f'<a:solidFill><a:srgbClr val="E2E8F0"/></a:solidFill>'
+                    f'</{border_tag}>'
+                )
+                tcPr.append(border_el)
+
+
+def add_chart_table(slide, categories, values, series_name, x, y, w, h):
+    """Adds a compact data table to accompany a chart."""
+    from pptx.enum.text import PP_ALIGN
+
+    categories = list(categories)[:10]
+    values = list(values)[:10]
+    row_count = len(categories) + 1  # +1 for header
+    col_count = 2
+
+    tbl = slide.shapes.add_table(
+        row_count, col_count,
+        Inches(x), Inches(y),
+        Inches(w), Inches(h)
+    ).table
+
+    col_w = Inches(w / col_count)
+    for col in tbl.columns:
+        col.width = col_w
+
+    # Header row
+    headers = [series_name or 'Category', 'Value']
+    for j, header in enumerate(headers):
+        cell = tbl.cell(0, j)
+        cell.text = header
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = ACCENT
+        para = cell.text_frame.paragraphs[0]
+        para.font.bold = True
+        para.font.size = Pt(11)
+        para.font.color.rgb = WHITE
+        para.alignment = PP_ALIGN.CENTER
+
+    # Data rows
+    for i, (cat, val) in enumerate(zip(categories, values)):
+        row_color = WHITE if i % 2 == 0 else BG2
+
+        cat_cell = tbl.cell(i + 1, 0)
+        cat_cell.text = str(cat)
+        cat_cell.fill.solid()
+        cat_cell.fill.fore_color.rgb = row_color
+        cat_para = cat_cell.text_frame.paragraphs[0]
+        cat_para.font.size = Pt(10)
+        cat_para.font.color.rgb = BODYTEXT
+        cat_para.alignment = PP_ALIGN.LEFT
+
+        val_cell = tbl.cell(i + 1, 1)
+        val_str = str(int(val)) if val == int(val) else f'{val:.1f}'
+        val_cell.text = val_str
+        val_cell.fill.solid()
+        val_cell.fill.fore_color.rgb = row_color
+        val_para = val_cell.text_frame.paragraphs[0]
+        val_para.font.size = Pt(10)
+        val_para.font.color.rgb = ACCENT
+        val_para.font.bold = True
+        val_para.alignment = PP_ALIGN.CENTER
+
+    apply_table_borders(tbl)
+
+
 def build_chart(slide, chart_type_enum, chart_title, categories, series_name, values, x, y, w, h):
+    """Build a styled chart and inject an XML legend."""
     chart_data = ChartData()
     chart_data.categories = categories
     chart_data.add_series(series_name, values)
@@ -134,9 +221,7 @@ def build_chart(slide, chart_type_enum, chart_title, categories, series_name, va
     except Exception:
         pass
 
-    # Add legend
-    from pptx.oxml.ns import qn
-    from lxml import etree
+    # Inject legend via XML
     chart_xml = chart._element
     plot_area = chart_xml.find(qn('c:plotArea'))
     if plot_area is not None:
@@ -166,52 +251,42 @@ def build_chart(slide, chart_type_enum, chart_title, categories, series_name, va
 
     return chart
 
+
 # ── SLIDE BUILDERS ──────────────────────────────────────────────────────────
 
 def build_title_slide(prs, el):
-    """LAYOUT 1 — Title slide with large centered title and subtitle."""
+    """LAYOUT 1 — Title slide."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
 
-    # Full-width decorative top bar
     add_shape(slide, 0, 0, SLIDE_W, 0.08, ACCENT)
-
-    # Large bottom gradient-like bar
     add_shape(slide, 0, SLIDE_H - 1.2, SLIDE_W, 1.2, RGBColor(0xE2, 0xE8, 0xF0))
     add_shape(slide, 0, SLIDE_H - 1.22, SLIDE_W, 0.05, ACCENT)
-
-    # Decorative side accent
     add_shape(slide, 0, 0.08, 0.06, SLIDE_H - 1.28, ACCENT2)
 
-    # Title — large, centered
     title_el = el.find('h1')
     title_text = title_el.get_text().strip() if title_el else 'Presentation'
 
-    tb = slide.shapes.add_textbox(
-        Inches(0.5), Inches(1.8),
-        Inches(SLIDE_W - 1.0), Inches(2.5)
-    )
+    tb = slide.shapes.add_textbox(Inches(0.5), Inches(1.8), Inches(SLIDE_W - 1.0), Inches(2.5))
     tf = tb.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.text = title_text
     p.font.size = Pt(48)
     p.font.bold = True
-    p.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)   # dark navy instead of WHITE
+    p.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
 
-    # Subtitle / tagline (from <p> tag)
     sub_el = el.find('p')
     if sub_el:
-        sub_text = sub_el.get_text().strip()
-        add_textbox(slide, sub_text,
+        add_textbox(slide, sub_el.get_text().strip(),
                     0.5, 4.5, SLIDE_W - 1.0, 0.7,
                     size=20, color=ACCENT, italic=True)
 
-    # Bottom label
+    from pptx.enum.text import PP_ALIGN
     add_textbox(slide, 'Powered by Infinium Intelligence',
                 0.5, SLIDE_H - 1.0, SLIDE_W - 1.0, 0.5,
-                size=11, color=BODYTEXT,
-                align=__import__('pptx.enum.text', fromlist=['PP_ALIGN']).PP_ALIGN.RIGHT)
+                size=11, color=BODYTEXT, align=PP_ALIGN.RIGHT)
+
 
 def build_bullets_slide(prs, el):
     """LAYOUT 2 — Standard bullets slide."""
@@ -220,70 +295,98 @@ def build_bullets_slide(prs, el):
     add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
 
     title_el = el.find('h1')
-    title_text = title_el.get_text().strip() if title_el else 'Slide'
-    add_title(slide, title_text)
+    add_title(slide, title_el.get_text().strip() if title_el else 'Slide')
     add_accent_bar(slide)
 
     items = [li.get_text().strip() for li in el.find_all('li')]
     if items:
         add_bullets(slide, items)
 
+
 def build_bar_chart_slide(prs, el):
-    """LAYOUT 3 — Full-width bar chart slide."""
+    """LAYOUT 3 — Bar chart with inline data table."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
     add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
 
     title_el = el.find('h1')
-    title_text = title_el.get_text().strip() if title_el else 'Chart'
-    add_title(slide, title_text)
+    add_title(slide, title_el.get_text().strip() if title_el else 'Chart')
     add_accent_bar(slide)
 
-    cats = [c.strip() for c in el.get('data-categories', '').split(',')]
-    vals = [float(v.strip()) for v in el.get('data-values', '0').split(',')]
+    cats = [c.strip() for c in el.get('data-categories', '').split(',') if c.strip()]
+    vals = [float(v.strip()) for v in el.get('data-values', '0').split(',') if v.strip()]
     series_name = el.get('data-series-name', '')
     chart_title = el.get('data-chart-title', '')
 
+    content_y = 1.55
     p_el = el.find('p')
     if p_el:
-        add_paragraph_text(slide, p_el.get_text().strip(), y=1.55, h=0.65)
-        chart_y = 2.3
-        chart_h = SLIDE_H - 2.3 - MARGIN
-    else:
-        chart_y = 1.65
-        chart_h = SLIDE_H - 1.65 - MARGIN
+        add_paragraph_text(slide, p_el.get_text().strip(), y=content_y, h=0.55)
+        content_y = 2.2
 
-    build_chart(slide, XL_CHART_TYPE.COLUMN_CLUSTERED,
-                chart_title, cats, series_name, vals,
-                MARGIN, chart_y, SLIDE_W - 2*MARGIN, chart_h)
+    content_h = SLIDE_H - content_y - MARGIN
+
+    if len(cats) <= 6:
+        # Chart on top (~65%), table below (~35%)
+        chart_h = content_h * 0.62
+        table_y = content_y + chart_h + 0.1
+        table_h = content_h - chart_h - 0.1
+
+        build_chart(slide, XL_CHART_TYPE.COLUMN_CLUSTERED,
+                    chart_title, cats, series_name, vals,
+                    MARGIN, content_y, SLIDE_W - 2 * MARGIN, chart_h)
+
+        add_chart_table(slide, cats, vals, series_name,
+                        MARGIN + 2.0, table_y,
+                        SLIDE_W - 2 * MARGIN - 4.0, table_h)
+    else:
+        # Chart left (~65%), table right (~35%)
+        chart_w = (SLIDE_W - 2 * MARGIN) * 0.65
+        table_x = MARGIN + chart_w + 0.2
+        table_w = SLIDE_W - table_x - MARGIN
+
+        build_chart(slide, XL_CHART_TYPE.COLUMN_CLUSTERED,
+                    chart_title, cats, series_name, vals,
+                    MARGIN, content_y, chart_w, content_h)
+
+        add_chart_table(slide, cats, vals, series_name,
+                        table_x, content_y, table_w, content_h)
+
 
 def build_pie_chart_slide(prs, el):
-    """LAYOUT 4 — Pie chart slide."""
+    """LAYOUT 4 — Pie chart with inline data table."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
     add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
 
     title_el = el.find('h1')
-    title_text = title_el.get_text().strip() if title_el else 'Chart'
-    add_title(slide, title_text)
+    add_title(slide, title_el.get_text().strip() if title_el else 'Chart')
     add_accent_bar(slide)
 
-    cats = [c.strip() for c in el.get('data-categories', '').split(',')]
-    vals = [float(v.strip()) for v in el.get('data-values', '0').split(',')]
+    cats = [c.strip() for c in el.get('data-categories', '').split(',') if c.strip()]
+    vals = [float(v.strip()) for v in el.get('data-values', '0').split(',') if v.strip()]
     chart_title = el.get('data-chart-title', '')
 
+    content_y = 1.55
     p_el = el.find('p')
     if p_el:
-        add_paragraph_text(slide, p_el.get_text().strip(), y=1.55, h=0.65)
-        chart_y = 2.3
-        chart_h = SLIDE_H - 2.3 - MARGIN
-    else:
-        chart_y = 1.65
-        chart_h = SLIDE_H - 1.65 - MARGIN
+        add_paragraph_text(slide, p_el.get_text().strip(), y=content_y, h=0.55)
+        content_y = 2.2
+
+    content_h = SLIDE_H - content_y - MARGIN
+
+    # Pie always: chart left (~62%), table right (~38%)
+    chart_w = (SLIDE_W - 2 * MARGIN) * 0.62
+    table_x = MARGIN + chart_w + 0.2
+    table_w = SLIDE_W - table_x - MARGIN
 
     build_chart(slide, XL_CHART_TYPE.PIE,
                 chart_title, cats, '', vals,
-                MARGIN + 1.5, chart_y, SLIDE_W - 2*MARGIN - 3.0, chart_h)
+                MARGIN, content_y, chart_w, content_h)
+
+    add_chart_table(slide, cats, vals, chart_title,
+                    table_x, content_y, table_w, content_h)
+
 
 def build_two_column_slide(prs, el):
     """LAYOUT 5 — Two column comparison slide."""
@@ -292,11 +395,10 @@ def build_two_column_slide(prs, el):
     add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
 
     title_el = el.find('h1')
-    title_text = title_el.get_text().strip() if title_el else 'Comparison'
-    add_title(slide, title_text)
+    add_title(slide, title_el.get_text().strip() if title_el else 'Comparison')
     add_accent_bar(slide)
 
-    col_w = (SLIDE_W - 2*MARGIN - 0.3) / 2
+    col_w = (SLIDE_W - 2 * MARGIN - 0.3) / 2
     left = el.find(class_='col-left')
     right = el.find(class_='col-right')
 
@@ -306,9 +408,7 @@ def build_two_column_slide(prs, el):
     ]:
         if not col_el:
             continue
-        # Card background
         add_shape(slide, col_x, 1.65, col_w, SLIDE_H - 1.65 - MARGIN, BG2)
-        # Top accent stripe on card
         add_shape(slide, col_x, 1.65, col_w, 0.05, accent_color)
 
         heading_el = col_el.find('h2')
@@ -322,39 +422,37 @@ def build_two_column_slide(prs, el):
             add_bullets(slide, items, x=col_x + 0.2, y=2.45,
                         w=col_w - 0.4, size=14)
 
+
 def build_mixed_slide(prs, el):
-    """LAYOUT 6 — Mixed: bullets on left, chart on right."""
+    """LAYOUT 6 — Bullets left, chart top-right, table bottom-right."""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_bg(slide)
     add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
 
     title_el = el.find('h1')
-    title_text = title_el.get_text().strip() if title_el else 'Overview'
-    add_title(slide, title_text)
+    add_title(slide, title_el.get_text().strip() if title_el else 'Overview')
     add_accent_bar(slide)
 
     content_y = 1.6
     content_h = SLIDE_H - content_y - MARGIN
-    col_w = (SLIDE_W - 2*MARGIN - 0.4) / 2
+    col_w = (SLIDE_W - 2 * MARGIN - 0.4) / 2
 
     # Left: bullet card
     add_shape(slide, MARGIN, content_y, col_w, content_h, BG2)
     add_shape(slide, MARGIN, content_y, col_w, 0.04, ACCENT2)
 
     col_left = el.find(class_='col-left')
-    items = []
-    if col_left:
-        items = [li.get_text().strip() for li in col_left.find_all('li')]
-    else:
-        items = [li.get_text().strip() for li in el.find_all('li')]
-
+    items = [li.get_text().strip() for li in (col_left or el).find_all('li')]
     if items:
         add_bullets(slide, items, x=MARGIN + 0.2, y=content_y + 0.2,
                     w=col_w - 0.4, size=14)
 
-    # Right: chart
+    # Right: chart top 65%, table bottom 35%
     chart_x = MARGIN + col_w + 0.4
     chart_w = SLIDE_W - chart_x - MARGIN
+    chart_h = content_h * 0.62
+    table_y = content_y + chart_h + 0.1
+    table_h = content_h - chart_h - 0.1
 
     chart_type_str = el.get('data-chart', 'bar')
     chart_type_enum = XL_CHART_TYPE.PIE if chart_type_str == 'pie' else XL_CHART_TYPE.COLUMN_CLUSTERED
@@ -368,112 +466,11 @@ def build_mixed_slide(prs, el):
     if cats and vals:
         build_chart(slide, chart_type_enum,
                     chart_title, cats, series_name, vals,
-                    chart_x, content_y, chart_w, content_h)
-        
-def build_table_slide(prs, el):
-    """LAYOUT 7 — Table slide."""
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
+                    chart_x, content_y, chart_w, chart_h)
 
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    set_bg(slide)
-    add_shape(slide, 0, 0, SLIDE_W, 0.05, ACCENT)
+        add_chart_table(slide, cats, vals, series_name,
+                        chart_x, table_y, chart_w, table_h)
 
-    title_el = el.find('h1')
-    title_text = title_el.get_text().strip() if title_el else 'Data Table'
-    add_title(slide, title_text)
-    add_accent_bar(slide)
-
-    table_el = el.find('table')
-    if not table_el:
-        return
-
-    # Parse headers
-    headers = []
-    thead = table_el.find('thead')
-    if thead:
-        headers = [th.get_text().strip() for th in thead.find_all(['th', 'td'])]
-    elif table_el.find('tr'):
-        first_row = table_el.find('tr')
-        headers = [th.get_text().strip() for th in first_row.find_all(['th', 'td'])]
-
-    # Parse rows
-    rows = []
-    tbody = table_el.find('tbody')
-    row_source = tbody if tbody else table_el
-    for tr in row_source.find_all('tr'):
-        cells = [td.get_text().strip() for td in tr.find_all(['td', 'th'])]
-        if cells and cells != headers:
-            rows.append(cells)
-
-    if not headers or not rows:
-        return
-
-    col_count = len(headers)
-    row_count = len(rows) + 1  # +1 for header
-
-    # Limit to 12 rows to fit slide
-    rows = rows[:11]
-    row_count = len(rows) + 1
-
-    table_w = SLIDE_W - 2 * MARGIN
-    table_h = min(SLIDE_H - 1.8 - MARGIN, row_count * 0.45)
-
-    tbl = slide.shapes.add_table(
-        row_count, col_count,
-        Inches(MARGIN), Inches(1.7),
-        Inches(table_w), Inches(table_h)
-    ).table
-
-    col_w = Inches(table_w / col_count)
-    for col in tbl.columns:
-        col.width = col_w
-
-    # Style header row
-    for j, header in enumerate(headers):
-        cell = tbl.cell(0, j)
-        cell.text = header
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = ACCENT
-        para = cell.text_frame.paragraphs[0]
-        para.font.bold = True
-        para.font.size = Pt(13)
-        para.font.color.rgb = WHITE
-        from pptx.enum.text import PP_ALIGN
-        para.alignment = PP_ALIGN.CENTER
-
-    # Style data rows
-    for i, row in enumerate(rows):
-        for j, cell_text in enumerate(row):
-            cell = tbl.cell(i + 1, j)
-            cell.text = str(cell_text)
-            # Alternate row colors
-            if i % 2 == 0:
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = WHITE
-            else:
-                cell.fill.solid()
-                cell.fill.fore_color.rgb = BG2
-            para = cell.text_frame.paragraphs[0]
-            para.font.size = Pt(12)
-            para.font.color.rgb = BODYTEXT
-            from pptx.enum.text import PP_ALIGN
-            para.alignment = PP_ALIGN.CENTER
-
-    # Style borders via XML
-    from pptx.oxml.ns import qn
-    from lxml import etree
-    border_xml = '<a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="12700"><a:solidFill><a:srgbClr val="E2E8F0"/></a:solidFill></a:ln>'
-    for row in tbl.rows:
-        for cell in row.cells:
-            tc = cell._tc
-            tcPr = tc.get_or_add_tcPr()
-            for border_tag in ['a:lnL', 'a:lnR', 'a:lnT', 'a:lnB']:
-                existing = tcPr.find(qn(border_tag))
-                if existing is not None:
-                    tcPr.remove(existing)
-                border_el = etree.fromstring(border_xml.replace('<a:ln', f'<{border_tag}').replace('</a:ln>', f'</{border_tag}>'))
-                tcPr.append(border_el)
 
 # ── MAIN CONVERTER ──────────────────────────────────────────────────────────
 
@@ -489,7 +486,6 @@ def html_to_pptx_bytes(html_string):
         chart_type = el.get('data-chart', '').strip()
         layout = el.get('data-layout', '').strip()
 
-        # Detect title slide: first slide with no chart/layout attrs and has <p>
         is_title = (
             not chart_type and
             not layout and
@@ -499,8 +495,6 @@ def html_to_pptx_bytes(html_string):
 
         if is_title:
             build_title_slide(prs, el)
-        elif layout == 'table' or el.find('table'):
-            build_table_slide(prs, el)
         elif chart_type == 'bar' and layout != 'mixed':
             build_bar_chart_slide(prs, el)
         elif chart_type == 'pie' and layout != 'mixed':

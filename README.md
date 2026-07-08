@@ -414,9 +414,3 @@ The first request after inactivity takes 30–60 seconds. Subsequent requests ar
 
 **Port already in use**
 Change the host port mapping: `-p 9090:8080` will expose the service on port 9090 while the container still listens on 8080 internally.
-
----
-
-## License
-
-MIT
